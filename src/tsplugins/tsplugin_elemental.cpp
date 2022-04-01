@@ -117,7 +117,7 @@ namespace ts {
         // ------------------------------------------------------------
         // Plugin Implementation
         // ------------------------------------------------------------
-
+        uint32_t           _eventIDFilter;   // Only allow this event_id to pass
         bool               _abort;       // Error (service not found, etc)
         bool               _continue;    // Continue processing if no splice information is found.
         bool               _adjustTime;  // Adjust PTS and DTS time stamps.
@@ -147,6 +147,7 @@ TS_REGISTER_PROCESSOR_PLUGIN(u"elemental", ts::ElementalPlugin);
 
 ts::ElementalPlugin::ElementalPlugin(TSP* tsp_) :
         ProcessorPlugin(tsp_, u"Remove ads insertions from a program using SCTE 35 splice information", u"[options] [service]"),
+        _eventIDFilter(),  // Only allow this event_id to pass
         _abort(false),
         _continue(false),
         _adjustTime(false),
@@ -163,6 +164,9 @@ ts::ElementalPlugin::ElementalPlugin(TSP* tsp_) :
 {
     // We need to define character sets to specify service names.
     duck.defineArgsForCharset(*this);
+
+    option(u"event-id-to-filter", 0, INTEGER,0,1,0,31);
+    help(u"event-id-to-filter", u"Only allow this event_id to pass as part of SCTE-35 descriptor");
 
     option(u"", 0, STRING, 0, 1);
     help(u"",
@@ -210,6 +214,7 @@ ts::ElementalPlugin::ElementalPlugin(TSP* tsp_) :
 
 bool ts::ElementalPlugin::getOptions()
 {
+    getIntValue(_eventIDFilter, u"event-id-to-filter");
     duck.loadArgs(*this);
     _service.set(value(u""));
     _dropStatus = present(u"stuffing") ? TSP_NULL : TSP_DROP;
@@ -233,6 +238,7 @@ bool ts::ElementalPlugin::start()
     _demux.reset();
     _videoPID = PID_NULL;
     _abort = false;
+
 
     _ccFixer.reset();
     _ccFixer.setGenerator(true);
@@ -292,7 +298,7 @@ void ts::ElementalPlugin::handlePMT(const PMT& pmt, PID)
 
     // If we could not find any splice info stream, we cannot remove ads.
     if (!foundSpliceInfo) {
-       // tsp->error(u"no splice information found in service %s, 0x%X (%d)", {_service.getName(), _service.getId(), _service.getId()});
+        // tsp->error(u"no splice information found in service %s, 0x%X (%d)", {_service.getName(), _service.getId(), _service.getId()});
         _abort = !_continue;
         return;
     }
@@ -315,19 +321,19 @@ void ts::ElementalPlugin::handleSection(SectionDemux& demux, const Section& sect
         return;
     }
 
-    std::cout << "pid, event_id, cancel: " << section.sourcePID() << " " <<cmd.event_id << " " << cmd.canceled << std::endl;
+    std::cout << "pid, event_id, event_id_to_filter cancel: " << section.sourcePID() << " " <<cmd.event_id << " " << _eventIDFilter <<  " " << cmd.canceled << std::endl;
     // Either cancel or add the event.
     if (cmd.immediate) {
-        if (cmd.event_id != 18){
+        if (cmd.event_id != _eventIDFilter){
 
             _states.find(500)->second.immediateOut=1;
             cmd.canceled=1;
             std::cout << _states.find(500)->second.immediateOut << std::endl;
         }
 
-        }
+    }
 
-    std::cout << "after pid, event_id, cancel: " << section.sourcePID() << " " <<cmd.event_id << " " << cmd.canceled << std::endl;
+    std::cout << "after pid, event_id, event_id_to_filter  cancel: " << section.sourcePID() << " " <<cmd.event_id << " "  << _eventIDFilter << " "<< cmd.canceled << std::endl;
 
 }
 
